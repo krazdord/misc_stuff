@@ -107,7 +107,7 @@ def main():
             sync_playlist(pl)
     log.info("After sync %i files not matched to a playlist." % len(all_files))
     if len(all_files) > 0:
-      confirm("Delete these files?", "true")
+      confirm("Delete these files?", True)
       files_deleted = len(all_files)
       for each_file in all_files:
         log.info("Removing: %s" % each_file.encode(sys.getfilesystemencoding()))
