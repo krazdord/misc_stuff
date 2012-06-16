@@ -94,10 +94,10 @@ files_copied = 0
 files_transcoded = 0
 files_skipped = 0
 files_deleted = 0
+file_errors = 0
 
 def main():
-    global all_files
-    global files_deleted
+    global files_deleted, file_errors, all_files
     all_files = scan_dir(destination_root, [destination_ext])
     print "Found " + str(len(all_files)) + " files on the device."
     
@@ -106,15 +106,23 @@ def main():
         for pl in fb2k_playlists:
             sync_playlist(pl)
     log.info("After sync %i files not matched to a playlist." % len(all_files))
+    for each_file in all_files:
+      log.info("%s" % each_file.encode(sys.getfilesystemencoding()))
     if len(all_files) > 0:
       confirm("Delete these files?", True)
-      files_deleted = len(all_files)
       for each_file in all_files:
-        log.info("Removing: %s" % each_file.encode(sys.getfilesystemencoding()))
-        remove(each_file.encode(sys.getfilesystemencoding()))
+        try:
+          log.info("Removing: %s" % each_file.encode(sys.getfilesystemencoding()))
+          remove(each_file.encode(sys.getfilesystemencoding()))
+        except WindowsError:
+          log.error("Error removing file: %s" % each_file.encode(sys.getfilesystemencoding()))
+          file_errors += 1
+          continue
+          
+        files_deleted += 1
         
     log.info("Completed Sync!")
-    log.info("Copied %i files, transcoded %i files, skipped %i files, deleted %i files" % (files_copied, files_transcoded, files_skipped, files_deleted))
+    log.info("Copied %i files, transcoded %i files, skipped %i files, deleted %i files, %i errors" % (files_copied, files_transcoded, files_skipped, files_deleted, file_errors))
     
     
 def scan_dir(path, exts):
