@@ -29,17 +29,18 @@
 
 # this is an array of foobar2000 playlist names you want synched
 #
-playlists = [ "car", "test" ]  
+playlists = [ "car" ]  
 
 # this is the path to your android/mp3 player music folder once mounted.
 # the converted files will be placed here.
 #
-destination_root = r"F:\Test_Music"
+# Note: expected to start with 'X:\' where X is a drive letter
+destination_root = r"H:\ "[:-1]
 
 # this is the path to your android/mp3 player playlist folder. m3u files will
-# place here.
+# be placed here.
 #
-playlist_root = r"F:\Test_Music\Playlists"
+playlist_root = r"H:\Playlists"
 
 # this is your target conversion format.
 #
@@ -74,7 +75,8 @@ import sys
 import unicodedata
 from subprocess import call
 import shlex, subprocess
-from urlparse import urlparse
+from urlparse import urlparse, urlsplit
+from urllib import quote, unquote
 from logging import StreamHandler, Formatter, DEBUG, INFO, getLogger
 from shutil import copyfile
 
@@ -90,39 +92,57 @@ prog_id = "Foobar2000.Application.0.7"
 
 fb2k = win32com.client.Dispatch(prog_id)
 all_files = []
+failed_files = []
+file_errors = 0
 files_copied = 0
 files_transcoded = 0
 files_skipped = 0
 files_deleted = 0
-file_errors = 0
+file_remove_errors = 0
 
 def main():
-    global files_deleted, file_errors, all_files
+    log.info("Scanning drive for existing files...")
+    global files_deleted, file_remove_errors, all_files
     all_files = scan_dir(destination_root, [destination_ext])
-    print "Found " + str(len(all_files)) + " files on the device."
+    log.info("Found %i files on the device." % len(all_files))
+    if confirm("Would you like to print them?", False):
+      for each_file in all_files:
+        print each_file.encode(sys.getfilesystemencoding())
+      confirm("Press enter.", True)
     
     fb2k_playlists = [ i for i in fb2k.Playlists if i.Name in playlists ]
     if fb2k_playlists:
         for pl in fb2k_playlists:
             sync_playlist(pl)
     log.info("After sync %i files not matched to a playlist." % len(all_files))
-    for each_file in all_files:
-      log.info("%s" % each_file.encode(sys.getfilesystemencoding()))
+    if confirm("Print them?", True):
+      for each_file in all_files:      
+        print each_file.encode(sys.getfilesystemencoding())
     if len(all_files) > 0:
-      confirm("Delete these files?", True)
-      for each_file in all_files:
-        try:
-          log.info("Removing: %s" % each_file.encode(sys.getfilesystemencoding()))
-          remove(each_file.encode(sys.getfilesystemencoding()))
-        except WindowsError:
-          log.error("Error removing file: %s" % each_file.encode(sys.getfilesystemencoding()))
-          file_errors += 1
-          continue
+      if confirm("Delete these " + str(len(all_files)) + " files?", False):      
+        for each_file in all_files:
+          try:
+            log.info("Removing: %s" % each_file.encode(sys.getfilesystemencoding()))
+            remove(each_file.encode(sys.getfilesystemencoding()))
+          except WindowsError:
+            log.error("Error removing file: %s" % each_file.encode(sys.getfilesystemencoding()))
+            file_remove_errors += 1
+            continue
           
         files_deleted += 1
         
     log.info("Completed Sync!")
-    log.info("Copied %i files, transcoded %i files, skipped %i files, deleted %i files, %i errors" % (files_copied, files_transcoded, files_skipped, files_deleted, file_errors))
+    log.info("Copied %i files" % files_copied )
+    log.info("Transcoded %i files" % files_transcoded )
+    log.info("Skipped %i files" % files_skipped )
+    log.info("Deleted %i files" % files_deleted )
+    log.info("%i files not copied due to errors" % len(failed_files) )
+    log.info("%i files not deleted due to error" % file_remove_errors )
+    if len(failed_files) > 0:
+      if confirm("Print files that didn't copy?", True):
+        for each_file in failed_files:    
+          log.info("%s" % each_file.encode(sys.getfilesystemencoding()) )
+    
     
     
 def scan_dir(path, exts):
@@ -144,13 +164,12 @@ def select_files(root, files, exts):
     selected_files = []
 
     for my_file in files:
-        #do concatenation here to get full path 
+        #do concatenation here to get full path            
         full_path = join(root, my_file)
         file_ext = splitext(my_file)[1]
-        
         for ext in exts:
           if file_ext.lower() == ext.lower():
-            selected_files.append(unicode(full_path.decode(sys.getfilesystemencoding())))
+            selected_files.append((full_path.decode(sys.getfilesystemencoding())).lower())
           #else:
            # print "Extensions didn't match (" + ext + " f:" + file_ext + "), skipping: " + full_path
 
@@ -160,21 +179,35 @@ def select_files(root, files, exts):
 def sync_playlist(sync_playlist):
     log.info("Syncing playlist '%s'..." % sync_playlist.Name)
     tracks = sync_playlist.GetTracks()
-    
+    global file_errors, all_files
     m3u_lines = ["#EXTM3U"]
     for t in tracks: 
+        try:        
+        
+          if t.Path[:7] != "file://":
+            log.error("Unsupported scheme in playlist, expected file, got: %s" % t.Path[:7])
+            file_errors += 1
+            failed_files.append(t.Path)
+            continue
+          source_path = t.Path[7:]              
+        
+          dest_path = sync_file(source_path)
+        except Exception, e:        
+          log.error("Error copying track with source path %s: %s" % (t.Path, str(e)))
+          file_errors += 1
+          failed_files.append(t.Path)
+          continue
+          
         m3u_lines.append(t.FormatTitle("#EXTINF:%length_seconds%, %artist% - %title%"))
-        source_path = urlparse(t.Path).netloc
-        dest_path = sync_file(source_path)
-        m3u_lines.append(dest_path)
+        m3u_lines.append(dest_path[3:])
         #print "adding line to m3u: " + dest_path.encode(sys.getfilesystemencoding()) 
         idx = 0
-        try:     
-          idx = all_files.index(unicode(dest_path))
+        try:
+          idx = all_files.index(dest_path.lower())
         except (IndexError, ValueError):
           #print "Not in the list: " + dest_path.encode(sys.getfilesystemencoding()) 
           continue
-        #print "Found: " + dest_path.encode(sys.getfilesystemencoding()) + " at index " + str(idx)
+        #print "Found: " + dest_path.encode(sys.getfilesystemencoding()) + " at index " + str(idx)        
         del all_files[idx]
     
     create_m3u(sync_playlist.Name, m3u_lines)
@@ -189,12 +222,17 @@ def sync_file(source_path):
 
     filenameext = parts[length-1]
     (filename, ext) = splitext(filenameext)
-   
-    parts_new_path = [destination_root]        
+    
+    actual_destination_root = destination_root
+    if destination_root[-1] == "\ "[:-1]:
+      actual_destination_root = destination_root[:-1]
+    
+    parts_new_path = [actual_destination_root] 
     parts_new_path.extend(parts[path_ignore_depth:length-1])
     destination_folder = sep.join(parts_new_path)
     parts_new_path.append(filename + destination_ext)     
     destination_path = sep.join(parts_new_path)
+    
     
     if not exists(destination_folder):
         log.debug("Creating folder: '%s'..." % destination_folder)
@@ -202,8 +240,12 @@ def sync_file(source_path):
     
     if not exists(destination_path):
       if (destination_ext.lower() != ext.lower()):
-        convert_file(source_path, destination_path)
-        files_transcoded += 1     
+        if ext.lower() == ".flac":
+          convert_flac_file(source_path, destination_path)
+          files_transcoded += 1
+        else:
+          log.warn("Unsupported extension on file: %s" % source_path)
+          files_skipped += 1
       else:
         log.info("Copying: '%s' -> '%s'" % (source_path, destination_path))
         copyfile(source_path, destination_path)
@@ -211,7 +253,7 @@ def sync_file(source_path):
     else:
       files_skipped += 1
         
-    return unicode(destination_path)
+    return destination_path
     
 def get_flac_metadata(input_file, tag_name):
     
@@ -232,8 +274,9 @@ def get_flac_metadata(input_file, tag_name):
     return ret
     
     
-def convert_file(input_file, output_file):
+def convert_flac_file(input_file, output_file):
 
+    
     log.info("Transcoding: '%s' -> '%s'" % (input_file, output_file))
     
     TITLE= "\"" + get_flac_metadata(input_file, "TITLE") + "\""
@@ -249,13 +292,17 @@ def convert_file(input_file, output_file):
       " --ta " + ARTIST + " --tl " + ALBUM + " --ty " + DATE + " --tn " +\
       TRACKNUMBER + " --tg " + GENRE + " - \"" + output_file + "\""
 
+
+    global failed_files, file_errors
+
     #TODO: call encode once? im lazy, eh
     log.debug("Converter command line:\n%s" % command.encode(sys.getfilesystemencoding()))
     try:
         retcode = call(command.encode(sys.getfilesystemencoding()), shell=True)        
     except OSError, e:
-        log.critical("Converter execution failed: '%s'", e.strerror)
-        
+        log.critical("Converter execution failed: %s", e.strerror)
+        failed_files.append(input_file)
+        file_errors += 1
  
 def create_m3u(playlist_name, m3u_lines):
     if not exists(playlist_root):
