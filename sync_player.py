@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
     SyncPlayer.py - A Python script for synchronizing music files between 
     Foobar2000 and an MP3 device.
@@ -21,30 +21,36 @@
 
 #
 # TODO: embed album art in transcoded files
+#requires lame, sed, flac, flacmeta on the path
 #
 
 ########################
 #### SETTINGS BELOW ####
 ########################
 
+devices = [u"car", u"g2", u"droid3", u"cowon"]
+
 # this is an array of foobar2000 playlist names you want synched
 #
-playlists = [ "car" ]  
+playlists_array = [[u"car"], [u"mp3player"], [u"car"], [u"mp3player"]]  
 
 # this is the path to your android/mp3 player music folder once mounted.
 # the converted files will be placed here.
 #
 # Note: expected to start with 'X:\' where X is a drive letter
-destination_root = r"H:\ "[:-1]
+destination_root_array = [ u"H:\ "[:-1], u"K:\Music", u"H:\Music", u"H:\Music"]
+
 
 # this is the path to your android/mp3 player playlist folder. m3u files will
 # be placed here.
 #
-playlist_root = r"H:\Playlists"
+playlist_root_array = [u"H:\Playlists", u"K:\Music\Playlists", u"H:\Music\Playlists", u"H:\Music\Playlists"]
 
-# this is your target conversion format.
+
+
+# this is your target conversion format. only mp3 works now
 #
-destination_ext = ".mp3"
+destination_ext = u".mp3"
 
 # this is how many path levels of your source dir to ignore
 # ie - if you put music in X:\Music\stuff in foobar,
@@ -52,13 +58,8 @@ destination_ext = ".mp3"
 # destination_root defined above
 # 
 path_ignore_depth = 2
+do_convert_files = True
 
-# change these paths to reflect where your converters are installed
-# 
-#ffmpeg_path = r"C:\Program Files (x86)\ffmpeg\bin\ffmpeg.exe"
-#lame_path = r"C:\Program Files (x86)\LAME\lame.exe"
-#flac_path = r"C:\Program Files (x86)\FLAC\flac.exe"
-#requires lame, sed, flac, flacmeta on the path
 
 ####################
 #### CODE BELOW ####
@@ -79,6 +80,10 @@ from urlparse import urlparse, urlsplit
 from urllib import quote, unquote
 from logging import StreamHandler, Formatter, DEBUG, INFO, getLogger
 from shutil import copyfile
+import argparse
+
+
+
 
 log = getLogger("Foobar.MP3PlayerSync")
 log.setLevel(DEBUG)
@@ -99,10 +104,15 @@ files_transcoded = 0
 files_skipped = 0
 files_deleted = 0
 file_remove_errors = 0
+playlists = u""
+playlist_root = u""
+destination_root = u""
+
 
 def main():
+    select_device()
     log.info("Scanning drive for existing files...")
-    global files_deleted, file_remove_errors, all_files
+    global files_deleted, file_remove_errors, all_files 
     all_files = scan_dir(destination_root, [destination_ext])
     log.info("Found %i files on the device." % len(all_files))
     if confirm("Would you like to print them?", False):
@@ -156,20 +166,28 @@ def scan_dir(path, exts):
             
     return selected_files
 
+def whatisthis(s):
+    if isinstance(s, str):
+      print "ordinary string"
+    elif isinstance(s, unicode):
+      print "unicode string"
+    else:
+      print "not a string"
+
+
     
 def select_files(root, files, exts):
     """
     simple logic here to filter out interesting files
     """
     selected_files = []
-
     for my_file in files:
         #do concatenation here to get full path            
         full_path = join(root, my_file)
-        file_ext = splitext(my_file)[1]
+        file_ext = splitext(my_file)[1]        
         for ext in exts:
           if file_ext.lower() == ext.lower():
-            selected_files.append((full_path.decode(sys.getfilesystemencoding())).lower())
+            selected_files.append(full_path.lower())
           #else:
            # print "Extensions didn't match (" + ext + " f:" + file_ext + "), skipping: " + full_path
 
@@ -239,7 +257,7 @@ def sync_file(source_path):
         makedirs(destination_folder)
     
     if not exists(destination_path):
-      if (destination_ext.lower() != ext.lower()):
+      if (destination_ext.lower() != ext.lower()) and do_convert_files:
         if ext.lower() == ".flac":
           convert_flac_file(source_path, destination_path)
           files_transcoded += 1
@@ -315,6 +333,34 @@ def create_m3u(playlist_name, m3u_lines):
     f.write("\n".join(m3u_lines))
     f.close()
     
+def select_device():
+    global playlists, destination_root, playlist_root
+    print "Which device would you like to sync: "
+    for device in devices:
+      print device
+    prompt = "Select a device name:"
+    prompt = '%s [%s]|: ' % (prompt, devices[0])
+        
+    index = 0    
+    while True:    
+      ans = raw_input(prompt)
+      if ans == "":
+        index = 0
+        break
+      else:
+        try:
+          index = devices.index(ans.lower())
+        except (IndexError, ValueError):
+          index = -1      
+        if index == -1:
+          print 'Please enter a valid device name.'
+          continue
+        else:
+          break
+    
+    playlists = playlists_array[index]
+    destination_root = destination_root_array[index]
+    playlist_root = playlist_root_array[index]
     
 def confirm(prompt=None, resp=False):
     """prompts for yes or no response from the user. Returns True for yes and
