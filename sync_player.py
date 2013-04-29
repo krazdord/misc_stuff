@@ -38,13 +38,14 @@ playlists_array = [[u"car"], [u"mp3player"], [u"car"], [u"mp3player"]]
 # the converted files will be placed here.
 #
 # Note: expected to start with 'X:\' where X is a drive letter
-destination_root_array = [ u"H:\ "[:-1], u"K:\Music", u"H:\Music", u"H:\Music"]
+# [:-1]
+destination_root_array = [ u"", u"Music", u"Music", u"Music"]
 
 
 # this is the path to your android/mp3 player playlist folder. m3u files will
 # be placed here.
 #
-playlist_root_array = [u"H:\Playlists", u"K:\Music\Playlists", u"H:\Music\Playlists", u"H:\Music\Playlists"]
+playlist_root_array = [u"Playlists", u"Music\Playlists", u"Music\Playlists", u"Music\Playlists"]
 
 
 
@@ -111,6 +112,7 @@ destination_root = u""
 
 def main():
     select_device()
+    select_drive_letter()
     log.info("Scanning drive for existing files...")
     global files_deleted, file_remove_errors, all_files 
     all_files = scan_dir(destination_root, [destination_ext])
@@ -361,6 +363,22 @@ def select_device():
     playlists = playlists_array[index]
     destination_root = destination_root_array[index]
     playlist_root = playlist_root_array[index]
+    
+def select_drive_letter():
+    global drive_letter, destination_root, playlist_root
+    prompt = "What drive letter does it have now (just the letter): "
+        
+    index = 0    
+    while True:    
+      ans = raw_input(prompt)
+      if ans == "":
+        continue
+      else:
+        break
+    
+    playlists = playlists_array[index]
+    destination_root = '%s:\%s' % (ans, destination_root)
+    playlist_root = '%s:\%s' % (ans, playlist_root)
     
 def confirm(prompt=None, resp=False):
     """prompts for yes or no response from the user. Returns True for yes and
