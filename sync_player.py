@@ -28,11 +28,11 @@
 #### SETTINGS BELOW ####
 ########################
 
-devices = [u"car", u"g2", u"droid3", u"cowon"]
+devices = [u"car", u"personal_phone", u"work_phone", u"cowon"]
 
 # this is an array of foobar2000 playlist names you want synched
 #
-playlists_array = [[u"car"], [u"mp3player"], [u"car"], [u"mp3player"]]  
+playlists_array = [[u"car"], [u"car"], [u"car"], [u"car"]]  
 
 # this is the path to your android/mp3 player music folder once mounted.
 # the converted files will be placed here.
@@ -111,6 +111,7 @@ destination_root = u""
 
 
 def main():
+    environ["PATH"] = environ["PATH"] + ";C:\Program Files (x86)\FLAC;C:\Program Files (x86)\GnuWin32\bin;C:\Program Files (x86)\LAME"    
     select_device()
     select_drive_letter()
     log.info("Scanning drive for existing files...")
